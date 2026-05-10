@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Finance Statement Analyzer</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Finance Tracker</p>
+          <h1>Bank Statement Analyzer</h1>
+          <p class="header-note">Import one or more statements, review categorized income and expenditure, then switch between graph and table views.</p>
+        </div>
+        <aside class="upload-panel" aria-label="Upload bank statement">
+          <div>
+            <p class="section-label">Source file</p>
+          </div>
+
+          <label class="drop-zone" for="statementFile" id="dropZone">
+            <input id="statementFile" type="file" multiple accept=".csv,.xls,.xlsx,.pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/pdf">
+            <span class="upload-icon" aria-hidden="true">+</span>
+            <span class="drop-copy">
+              <span class="drop-title">Upload bank statements</span>
+              <span class="drop-help">CSV, XLS, XLSX, PDF</span>
+            </span>
+          </label>
+
+          <div class="parse-status" id="parseStatus" role="status">
+            Waiting for a statement.
+          </div>
+        </aside>
+      </header>
+
+      <section class="workspace">
+        <section class="results-panel">
+          <nav class="account-tabs hidden" id="accountTabs" aria-label="Account statements"></nav>
+
+          <header class="results-header">
+            <div>
+              <p class="eyebrow" id="bankName">Bank statement</p>
+              <h2 id="customerName">Upload a statement to begin</h2>
+            </div>
+            <div class="view-toggle" aria-label="Choose view">
+              <button type="button" class="active" id="graphButton">Graph</button>
+              <button type="button" id="tableButton">Table</button>
+            </div>
+          </header>
+
+          <div class="summary-strip" aria-label="Financial summary">
+            <div class="summary-card income-card">
+              <span>Total Income</span>
+              <strong id="incomeTotal">$0.00</strong>
+            </div>
+            <div class="summary-card expense-card">
+              <span>Total Expenditure</span>
+              <strong id="expenseTotal">$0.00</strong>
+            </div>
+            <div class="summary-card balance-card">
+              <span>Closing Balance</span>
+              <strong id="closingBalance">Not found</strong>
+            </div>
+            <div class="summary-card net-card">
+              <span>Net</span>
+              <strong id="netTotal">$0.00</strong>
+            </div>
+          </div>
+
+          <section class="insight-grid" aria-label="Category highlights">
+            <article>
+              <span>Largest income category</span>
+              <strong id="topIncome">-</strong>
+            </article>
+            <article>
+              <span>Largest expenditure category</span>
+              <strong id="topExpense">-</strong>
+            </article>
+            <article>
+              <span>Transactions read</span>
+              <strong id="transactionCount">0</strong>
+            </article>
+          </section>
+
+          <section class="analysis-toolbar" aria-label="Choose analysis breakdown">
+            <div>
+              <p class="section-label">Breakdown</p>
+              <h3 id="analysisTitle">Category view</h3>
+            </div>
+            <div class="breakdown-toggle" aria-label="Choose breakdown">
+              <button type="button" class="active" data-breakdown="category">Category</button>
+              <button type="button" data-breakdown="month">Month</button>
+              <button type="button" data-breakdown="week">Week</button>
+              <button type="button" data-breakdown="day">Day</button>
+            </div>
+          </section>
+
+          <section class="graph-view" id="graphView" aria-label="Income and expenditure graph">
+            <div class="panel-title">
+              <div>
+                <p class="section-label" id="chartLabel">Category analysis</p>
+                <h3 id="chartTitle">Income vs expenditure</h3>
+              </div>
+            </div>
+            <div class="chart-wrap">
+              <canvas id="categoryChart" width="980" height="460"></canvas>
+            </div>
+            <div class="legend" id="chartLegend"></div>
+          </section>
+
+          <section class="table-view hidden" id="tableView" aria-label="Income and expenditure table">
+            <div class="panel-title">
+              <div>
+                <p class="section-label" id="tableLabel">Category analysis</p>
+                <h3 id="tableTitle">Category table</h3>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead id="tableHead">
+                  <tr>
+                    <th>Type</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                    <th>Transactions</th>
+                  </tr>
+                </thead>
+                <tbody id="categoryRows">
+                  <tr>
+                    <td colspan="4" class="empty-cell">Upload a statement to see categories.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
