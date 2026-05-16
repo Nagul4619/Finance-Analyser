@@ -83,6 +83,34 @@
             </article>
           </section>
 
+          <section class="chat-panel" aria-label="Finance question assistant">
+            <div class="chat-header">
+              <div>
+                <p class="section-label">Ask</p>
+                <h3>Statement Chat</h3>
+              </div>
+              <span class="chat-status" id="chatStatus">Ready</span>
+            </div>
+
+            <div class="chat-messages" id="chatMessages" role="log" aria-live="polite">
+              <div class="chat-message assistant">
+                Upload a statement, then ask about income, expenses, balances, top categories, or monthly trends.
+              </div>
+            </div>
+
+            <div class="chat-suggestions" id="chatSuggestions" aria-label="Suggested questions">
+              <button type="button" data-question="What is my total income?">Income</button>
+              <button type="button" data-question="Where did I spend the most?">Top spend</button>
+              <button type="button" data-question="What is my net amount?">Net</button>
+              <button type="button" data-question="How can I save money?">Savings</button>
+            </div>
+
+            <form class="chat-form" id="chatForm">
+              <input id="chatInput" type="text" placeholder="Ask a question about this statement" autocomplete="off">
+              <button type="submit">Ask</button>
+            </form>
+          </section>
+
           <section class="analysis-toolbar" aria-label="Choose analysis breakdown">
             <div>
               <p class="section-label">Breakdown</p>

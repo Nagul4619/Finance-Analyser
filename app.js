@@ -8,6 +8,10 @@ const graphView = document.querySelector("#graphView");
 const tableView = document.querySelector("#tableView");
 const canvas = document.querySelector("#categoryChart");
 const ctx = canvas.getContext("2d");
+const chatForm = document.querySelector("#chatForm");
+const chatInput = document.querySelector("#chatInput");
+const chatMessages = document.querySelector("#chatMessages");
+const chatSuggestions = document.querySelector("#chatSuggestions");
 
 const elements = {
   incomeTotal: document.querySelector("#incomeTotal"),
@@ -27,7 +31,8 @@ const elements = {
   tableHead: document.querySelector("#tableHead"),
   accountTabs: document.querySelector("#accountTabs"),
   categoryRows: document.querySelector("#categoryRows"),
-  chartLegend: document.querySelector("#chartLegend")
+  chartLegend: document.querySelector("#chartLegend"),
+  chatStatus: document.querySelector("#chatStatus")
 };
 
 const categoryRules = [
@@ -142,6 +147,18 @@ elements.categoryRows.addEventListener("keydown", event => {
 
 breakdownButtons.forEach(button => {
   button.addEventListener("click", () => setBreakdown(button.dataset.breakdown));
+});
+
+chatForm.addEventListener("submit", event => {
+  event.preventDefault();
+  submitChatQuestion(chatInput.value);
+});
+
+chatSuggestions.addEventListener("click", event => {
+  const button = event.target.closest("[data-question]");
+  if (!button) return;
+
+  submitChatQuestion(button.dataset.question);
 });
 
 window.addEventListener("resize", () => drawChart(latestGroups));
@@ -853,6 +870,7 @@ function render(profile, transactions, groups, closingBalance = null) {
   elements.topIncome.textContent = topIncome ? `${topIncome.category} (${formatMoney(topIncome.amount)})` : "-";
   elements.topExpense.textContent = topExpense ? `${topExpense.category} (${formatMoney(topExpense.amount)})` : "-";
   elements.transactionCount.textContent = String(transactions.length);
+  elements.chatStatus.textContent = `${transactions.length} transactions loaded`;
 
   renderCurrentAnalysis();
 }
@@ -1602,6 +1620,236 @@ function toggleAggregate(key) {
   }
 
   renderTable(latestGroups);
+}
+
+function submitChatQuestion(rawQuestion) {
+  const question = rawQuestion.trim();
+  if (!question) return;
+
+  appendChatMessage("user", question);
+  chatInput.value = "";
+  const answer = answerFinanceQuestion(question);
+  appendChatMessage("assistant", answer);
+}
+
+function appendChatMessage(role, text) {
+  const message = document.createElement("div");
+  message.className = `chat-message ${role}`;
+  message.textContent = text;
+  chatMessages.appendChild(message);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function answerFinanceQuestion(question) {
+  if (!latestTransactions.length) {
+    return "Upload a bank statement first, then I can answer questions using the transactions in that statement.";
+  }
+
+  const query = question.toLowerCase();
+  const snapshot = getStatementSnapshot();
+  const category = findRequestedCategory(query);
+
+  if (containsAny(query, ["help", "what can you", "examples", "sample"])) {
+    return "Try questions like: What is my total income? Where did I spend the most? What is my net amount? Show groceries. What happened in the latest month? How can I save money?";
+  }
+
+  if (category) {
+    return formatCategoryAnswer(category);
+  }
+
+  if (containsAny(query, ["save", "saving", "reduce", "budget", "advice"])) {
+    return buildSavingsAnswer(snapshot);
+  }
+
+  if (containsAny(query, ["where did i spend", "top spend", "most spend", "highest spend", "biggest spend", "largest expense", "top expense"])) {
+    const topExpenses = getTopGroups("Expenditure", 5);
+    return topExpenses.length
+      ? `Your highest spending categories are:\n${topExpenses.map((group, index) => `${index + 1}. ${group.category}: ${formatMoney(group.amount)} across ${group.count} transactions`).join("\n")}`
+      : "I did not find any expenditure transactions in this statement.";
+  }
+
+  if (containsAny(query, ["highest income", "biggest income", "largest income", "top income"])) {
+    const topIncome = getTopGroups("Income", 5);
+    return topIncome.length
+      ? `Your highest income categories are:\n${topIncome.map((group, index) => `${index + 1}. ${group.category}: ${formatMoney(group.amount)} across ${group.count} transactions`).join("\n")}`
+      : "I did not find any income transactions in this statement.";
+  }
+
+  if (containsAny(query, ["income", "credit", "earned", "received"])) {
+    return `Your total income is ${formatMoney(snapshot.income)} across ${snapshot.incomeCount} transactions. ${snapshot.topIncome ? `The largest income category is ${snapshot.topIncome.category} at ${formatMoney(snapshot.topIncome.amount)}.` : ""}`.trim();
+  }
+
+  if (containsAny(query, ["expense", "expenditure", "spent", "spend", "debit", "paid"])) {
+    return `Your total expenditure is ${formatMoney(snapshot.expense)} across ${snapshot.expenseCount} transactions. ${snapshot.topExpense ? `The largest expense category is ${snapshot.topExpense.category} at ${formatMoney(snapshot.topExpense.amount)}.` : ""}`.trim();
+  }
+
+  if (containsAny(query, ["net", "surplus", "deficit", "left over", "leftover"])) {
+    const direction = snapshot.net >= 0 ? "surplus" : "deficit";
+    return `Your net amount is ${formatMoney(snapshot.net)}, which is a ${direction} for the uploaded statement.`;
+  }
+
+  if (containsAny(query, ["balance", "closing"])) {
+    return snapshot.closingBalance === null
+      ? "I could not find a closing balance in this statement."
+      : `The closing balance I found is ${formatMoney(snapshot.closingBalance)}.`;
+  }
+
+  if (containsAny(query, ["count", "how many", "transactions"])) {
+    return `I read ${snapshot.count} transactions: ${snapshot.incomeCount} income and ${snapshot.expenseCount} expenditure transactions.`;
+  }
+
+  if (containsAny(query, ["month", "monthly", "week", "weekly", "day", "daily"]) || findNamedMonth(query)) {
+    return answerPeriodQuestion(query);
+  }
+
+  if (containsAny(query, ["recent", "latest", "largest transaction", "biggest transaction", "top transaction"])) {
+    return answerTransactionQuestion(query);
+  }
+
+  return `Here is the quick picture: income ${formatMoney(snapshot.income)}, expenditure ${formatMoney(snapshot.expense)}, net ${formatMoney(snapshot.net)}, with ${snapshot.count} transactions from ${snapshot.dateRange}. Ask about a category, a month, top spending, or savings ideas for more detail.`;
+}
+
+function getStatementSnapshot() {
+  const statement = accountStatements.find(item => item.id === activeStatementId);
+  const incomeTransactions = latestTransactions.filter(item => item.amount > 0);
+  const expenseTransactions = latestTransactions.filter(item => item.amount < 0);
+  const income = incomeTransactions.reduce((sum, item) => sum + item.amount, 0);
+  const expense = expenseTransactions.reduce((sum, item) => sum + Math.abs(item.amount), 0);
+
+  return {
+    income,
+    expense,
+    net: income - expense,
+    count: latestTransactions.length,
+    incomeCount: incomeTransactions.length,
+    expenseCount: expenseTransactions.length,
+    topIncome: getTopGroups("Income", 1)[0],
+    topExpense: getTopGroups("Expenditure", 1)[0],
+    closingBalance: statement ? statement.closingBalance : null,
+    dateRange: getDateRangeLabel(latestTransactions)
+  };
+}
+
+function getDateRangeLabel(transactions) {
+  const dates = transactions.map(transaction => transaction.dateValue).filter(Boolean).sort((a, b) => a - b);
+  if (!dates.length) return "undated rows";
+  return `${formatDateLabel(dates[0])} to ${formatDateLabel(dates[dates.length - 1])}`;
+}
+
+function getTopGroups(type, limit) {
+  return latestCategoryGroups
+    .filter(group => group.type === type)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, limit);
+}
+
+function findRequestedCategory(query) {
+  const normalizedQuery = normalizeQuestionText(query);
+  if (!normalizedQuery) return null;
+
+  return latestCategoryGroups.find(group => {
+    const category = normalizeQuestionText(group.category);
+    const genericWords = ["income", "expenditure", "expense", "other", "in", "out"];
+    const words = category.split(" ").filter(word => word.length > 2 && !genericWords.includes(word));
+    return normalizedQuery.includes(category) || words.some(word => normalizedQuery.includes(word));
+  });
+}
+
+function formatCategoryAnswer(group) {
+  const direction = group.type === "Income" ? "income" : "expenditure";
+  const examples = group.transactions
+    .slice()
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    .slice(0, 3)
+    .map(transaction => `- ${formatTransactionDate(transaction)}: ${transaction.description} (${formatMoney(Math.abs(transaction.amount))})`)
+    .join("\n");
+
+  return `${group.category} has ${formatMoney(group.amount)} in ${direction} across ${group.count} transactions.${examples ? `\nLargest entries:\n${examples}` : ""}`;
+}
+
+function answerPeriodQuestion(query) {
+  const breakdown = containsAny(query, ["week", "weekly"]) ? "week" : containsAny(query, ["day", "daily"]) ? "day" : "month";
+  const periods = summarizePeriods(latestTransactions, breakdown);
+  if (!periods.length) {
+    return "I could not build a dated period summary because the statement rows did not include readable dates.";
+  }
+
+  const namedMonth = findNamedMonth(query);
+  let period = null;
+
+  if (namedMonth) {
+    period = periods.find(item => {
+      const date = item.sortDate;
+      return date.getMonth() === namedMonth.month && (!namedMonth.year || date.getFullYear() === namedMonth.year);
+    });
+  }
+
+  if (!period && containsAny(query, ["latest", "last", "recent", "this"])) {
+    period = periods[periods.length - 1];
+  }
+
+  if (!period && breakdown === "month") {
+    const biggestExpensePeriod = periods.slice().sort((a, b) => b.expense - a.expense)[0];
+    period = biggestExpensePeriod || periods[periods.length - 1];
+  }
+
+  if (!period) {
+    period = periods[periods.length - 1];
+  }
+
+  return `${period.period}: income ${formatMoney(period.income)}, expenditure ${formatMoney(period.expense)}, net ${formatMoney(period.net)}, across ${period.count} transactions.`;
+}
+
+function answerTransactionQuestion(query) {
+  const transactions = latestTransactions.slice();
+  const showIncome = containsAny(query, ["income", "credit", "received"]);
+  const showExpense = containsAny(query, ["expense", "spend", "spent", "debit", "paid"]);
+  const filtered = transactions.filter(transaction => {
+    if (showIncome) return transaction.amount > 0;
+    if (showExpense) return transaction.amount < 0;
+    return true;
+  });
+
+  const sorted = containsAny(query, ["recent", "latest"])
+    ? filtered.sort((a, b) => (b.dateValue ? b.dateValue.getTime() : 0) - (a.dateValue ? a.dateValue.getTime() : 0))
+    : filtered.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+  const rows = sorted.slice(0, 5).map((transaction, index) => `${index + 1}. ${formatTransactionDate(transaction)}: ${transaction.description} (${formatMoney(Math.abs(transaction.amount))})`);
+  return rows.length ? rows.join("\n") : "I did not find matching transactions for that question.";
+}
+
+function buildSavingsAnswer(snapshot) {
+  const topExpenses = getTopGroups("Expenditure", 3);
+  if (!topExpenses.length) {
+    return "I did not find expenditure rows to analyze for savings ideas.";
+  }
+
+  const suggestions = topExpenses.map(group => {
+    const tenPercent = group.amount * 0.1;
+    return `${group.category}: a 10% reduction would save about ${formatMoney(tenPercent)}.`;
+  });
+
+  return `Your biggest saving opportunities are based on the largest expense categories:\n${suggestions.join("\n")}\nCurrent net amount: ${formatMoney(snapshot.net)}.`;
+}
+
+function findNamedMonth(query) {
+  const months = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+  const monthIndex = months.findIndex(month => query.includes(month) || query.includes(month.slice(0, 3)));
+  if (monthIndex < 0) return null;
+
+  const yearMatch = query.match(/\b(20\d{2}|19\d{2})\b/);
+  return {
+    month: monthIndex,
+    year: yearMatch ? Number(yearMatch[1]) : null
+  };
+}
+
+function containsAny(value, terms) {
+  return terms.some(term => value.includes(term));
+}
+
+function normalizeQuestionText(value = "") {
+  return value.toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function setStatus(message) {
